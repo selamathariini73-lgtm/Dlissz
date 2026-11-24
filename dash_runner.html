@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Dash Runner</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; background:#101827; color:#fff; font-family:system-ui,Arial,sans-serif; overflow:hidden; touch-action:manipulation; }
+  #wrap { min-height:100dvh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:12px; }
+  h1 { margin:0 0 8px; font-size:clamp(24px,6vw,36px); letter-spacing:2px; color:#7ee7ff; text-shadow:0 0 18px #16a5cf; }
+  #hud { width:min(94vw,760px); display:flex; justify-content:space-between; margin:0 0 8px; font-weight:700; font-size:15px; }
+  canvas { width:min(94vw,760px); height:auto; aspect-ratio: 760 / 390; border:2px solid #31516c; border-radius:16px; background:#8bd9ee; box-shadow:0 12px 40px #0008; }
+  #help { margin:10px 0 8px; color:#c7d8e7; text-align:center; font-size:14px; }
+  button { border:0; border-radius:14px; padding:13px 24px; color:#081522; background:#7ee7ff; font-weight:800; font-size:16px; box-shadow:0 4px 0 #268ba6; }
+  button:active { transform:translateY(3px); box-shadow:0 1px 0 #268ba6; }
+  #jump { width:min(94vw,760px); margin-top:8px; padding:16px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1> DASH RUNNER </h1>
+  <div id="hud"><span>⭐ Skor: <b id="score">0</b></span><span>🏆 Rekor: <b id="best">0</b></span></div>
+  <canvas id="game" width="760" height="390" aria-label="Game Dash Runner"></canvas>
+  <div id="help">Tekan layar, tombol LOMPAT, atau spasi untuk melompat.</div>
+  <button id="jump">LOMPAT ⬆</button>
+</div>
+<script>
+(() => {
+ const c=document.getElementById('game'), ctx=c.getContext('2d');
+ const scoreEl=document.getElementById('score'), bestEl=document.getElementById('best');
+ let best=Number(localStorage.getItem('dashRunnerBest')||0); bestEl.textContent=best;
+ const ground=320;
+ let player, obstacles, score, speed, spawn, running, over, clouds, last=0;
+ function reset(){
+   player={x:105,y:ground-48,w:34,h:48,vy:0,onGround:true};
+   obstacles=[]; score=0; speed=5; spawn=65; running=true; over=false; last=0;
+   scoreEl.textContent='0'; requestAnimationFrame(loop);
+ }
+ function jump(){
+   if(!running){ if(over) reset(); else reset(); return; }
+   if(player.onGround){player.vy=-13.5;player.onGround=false;}
+ }
+ document.getElementById('jump').addEventListener('pointerdown',e=>{e.preventDefault();jump();});
+ c.addEventListener('pointerdown',e=>{e.preventDefault();jump();});
+ window.addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='ArrowUp'){e.preventDefault();jump();}});
+ clouds=[{x:90,y:70,s:1},{x:350,y:105,s:.75},{x:620,y:55,s:1.1}];
+ function rounded(x,y,w,h,r,color){ctx.fillStyle=color;ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill();}
+ function draw(){
+   const g=ctx.createLinearGradient(0,0,0,390);g.addColorStop(0,'#79d5ed');g.addColorStop(1,'#e2f8ff');ctx.fillStyle=g;ctx.fillRect(0,0,760,390);
+   // sun
+   ctx.fillStyle='#fff1a8';ctx.beginPath();ctx.arc(650,75,32,0,Math.PI*2);ctx.fill();
+   // clouds
+   clouds.forEach(cl=>{ctx.fillStyle='#ffffffcc';ctx.beginPath();ctx.arc(cl.x,cl.y,17*cl.s,0,Math.PI*2);ctx.arc(cl.x+20*cl.s,cl.y-8*cl.s,22*cl.s,0,Math.PI*2);ctx.arc(cl.x+43*cl.s,cl.y,16*cl.s,0,Math.PI*2);ctx.fill();});
+   // distant hills
+   ctx.fillStyle='#79c99b';ctx.beginPath();ctx.moveTo(0,275);ctx.quadraticCurveTo(130,180,270,275);ctx.quadraticCurveTo(420,190,570,275);ctx.quadraticCurveTo(680,210,760,260);ctx.lineTo(760,390);ctx.lineTo(0,390);ctx.fill();
+   ctx.fillStyle='#3eaa78';ctx.fillRect(0,ground,760,70);
+   ctx.fillStyle='#277e60';ctx.fillRect(0,ground,760,7);
+   // road dashes
+   ctx.fillStyle='#b5f0c5'; for(let x=-(score*speed*.7%70);x<780;x+=70)ctx.fillRect(x,355,38,5);
+   // player
+   rounded(player.x,player.y,player.w,player.h,9,'#ffb347');
+   rounded(player.x+6,player.y+8,22,17,6,'#fff0d5');
+   ctx.fillStyle='#182c43';ctx.beginPath();ctx.arc(player.x+24,player.y+16,3,0,Math.PI*2);ctx.fill();
+   rounded(player.x+4,player.y+player.h-5,11,9,3,'#243b53');rounded(player.x+21,player.y+player.h-5,11,9,3,'#243b53');
+   // obstacles
+   obstacles.forEach(o=>{rounded(o.x,o.y,o.w,o.h,5,'#e95b5b');ctx.fillStyle='#ffb0a6';ctx.fillRect(o.x+6,o.y+7,5,8);});
+   if(!running){
+     ctx.fillStyle='#071727bb';ctx.fillRect(0,0,760,390);
+     ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='bold 42px system-ui';ctx.fillText('GAME OVER',380,165);
+     ctx.font='bold 22px system-ui';ctx.fillText('Skor kamu: '+Math.floor(score),380,205);
+     ctx.font='18px system-ui';ctx.fillText('Tekan LOMPAT untuk bermain lagi',380,245);
+   }
+ }
+ function update(dt){
+   if(!running)return;
+   const step=dt/16.67;
+   score+=step*0.12; speed=Math.min(10,5+score/100);
+   scoreEl.textContent=Math.floor(score);
+   player.vy+=.68*step;player.y+=player.vy*step;
+   if(player.y+player.h>=ground){player.y=ground-player.h;player.vy=0;player.onGround=true;}
+   spawn-=step;
+   if(spawn<=0){let h=28+Math.random()*25;obstacles.push({x:780,y:ground-h,w:24+Math.random()*15,h});spawn=65+Math.random()*55-(speed-5)*3;}
+   obstacles.forEach(o=>o.x-=speed*step);obstacles=obstacles.filter(o=>o.x+o.w>0);
+   for(const o of obstacles){
+     if(player.x+player.w-5>o.x+3&&player.x+5<o.x+o.w-3&&player.y+player.h-4>o.y+3){
+       running=false;over=true;
+       if(Math.floor(score)>best){best=Math.floor(score);localStorage.setItem('dashRunnerBest',best);bestEl.textContent=best;}
+       break;
+     }
+   }
+   clouds.forEach(cl=>{cl.x-=.35*step;if(cl.x<-70)cl.x=820;});
+ }
+ function loop(t){
+   if(!running && over){draw();return;}
+   if(!last)last=t;let dt=Math.min(32,t-last);last=t;
+   update(dt);draw();if(running)requestAnimationFrame(loop);
+ }
+ // Initial screen
+ player={x:105,y:ground-48,w:34,h:48,vy:0,onGround:true};obstacles=[];score=0;speed=5;spawn=65;running=false;over=false;last=0;
+ draw();
+ ctx.fillStyle='#09243a';ctx.textAlign='center';ctx.font='bold 26px system-ui';ctx.fillText('TEKAN LOMPAT UNTUK MULAI',380,185);
+})();
+</script>
+</body>
+</html>
